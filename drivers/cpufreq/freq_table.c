@@ -21,19 +21,19 @@
 int cpufreq_frequency_table_cpuinfo(struct cpufreq_policy *policy,
 				    struct cpufreq_frequency_table *table)
 {
+	struct cpufreq_frequency_table *pos;
 	unsigned int min_freq = ~0;
 	unsigned int max_freq = 0;
-	unsigned int i;
+	unsigned int freq;
 
-	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
-		unsigned int freq = table[i].frequency;
-		if (freq == CPUFREQ_ENTRY_INVALID) {
-			pr_debug("table entry %u is invalid, skipping\n", i);
+	cpufreq_for_each_valid_entry(pos, table) {
+		freq = pos->frequency;
 
+		if (!cpufreq_boost_enabled()
+		    && (pos->flags & CPUFREQ_BOOST_FREQ))
 			continue;
-		}
-		pr_debug("table entry %u: %u kHz, %u driver_data\n",
-					i, freq, table[i].driver_data);
+
+		pr_debug("table entry %u: %u kHz\n", (int)(pos - table), freq);
 		if (freq < min_freq)
 			min_freq = freq;
 		if (freq > max_freq)
@@ -54,7 +54,8 @@ EXPORT_SYMBOL_GPL(cpufreq_frequency_table_cpuinfo);
 int cpufreq_frequency_table_verify(struct cpufreq_policy *policy,
 				   struct cpufreq_frequency_table *table)
 {
-	unsigned int next_larger = ~0, freq, i = 0;
+	struct cpufreq_frequency_table *pos;
+	unsigned int freq, next_larger = ~0;
 	bool found = false;
 
 	pr_debug("request for verification of policy (%u - %u kHz) for cpu %u\n",
@@ -62,9 +63,9 @@ int cpufreq_frequency_table_verify(struct cpufreq_policy *policy,
 
 	cpufreq_verify_within_cpu_limits(policy);
 
-	for (; freq = table[i].frequency, freq != CPUFREQ_TABLE_END; i++) {
-		if (freq == CPUFREQ_ENTRY_INVALID)
-			continue;
+	cpufreq_for_each_valid_entry(pos, table) {
+		freq = pos->frequency;
+
 		if ((freq >= policy->min) && (freq <= policy->max)) {
 			found = true;
 			break;
@@ -115,7 +116,8 @@ int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
 		.driver_data = ~0,
 		.frequency = 0,
 	};
-	unsigned int diff, i;
+	struct cpufreq_frequency_table *pos;
+	unsigned int freq, i = 0;
 
 	pr_debug("request for target %u kHz (relation: %u) for cpu %u\n",
 					target_freq, relation, policy->cpu);
@@ -130,10 +132,10 @@ int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
 		break;
 	}
 
-	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
-		unsigned int freq = table[i].frequency;
-		if (freq == CPUFREQ_ENTRY_INVALID)
-			continue;
+	cpufreq_for_each_valid_entry(pos, table) {
+		freq = pos->frequency;
+
+		i = pos - table;
 		if ((freq < policy->min) || (freq > policy->max))
 			continue;
 		switch (relation) {
@@ -188,26 +190,52 @@ int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
 }
 EXPORT_SYMBOL_GPL(cpufreq_frequency_table_target);
 
-static DEFINE_PER_CPU(struct cpufreq_frequency_table *, cpufreq_show_table);
+int cpufreq_frequency_table_get_index(struct cpufreq_policy *policy,
+		unsigned int freq)
+{
+	struct cpufreq_frequency_table *pos, *table;
+
+	table = cpufreq_frequency_get_table(policy->cpu);
+	if (unlikely(!table)) {
+		pr_debug("%s: Unable to find frequency table\n", __func__);
+		return -ENOENT;
+	}
+
+	cpufreq_for_each_valid_entry(pos, table)
+		if (pos->frequency == freq)
+			return pos - table;
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(cpufreq_frequency_table_get_index);
+
 /**
  * show_available_freqs - show available frequencies for the specified CPU
  */
 static ssize_t show_available_freqs(struct cpufreq_policy *policy, char *buf)
 {
-	unsigned int i = 0;
-	unsigned int cpu = policy->cpu;
 	ssize_t count = 0;
-	struct cpufreq_frequency_table *table;
+	struct cpufreq_frequency_table *pos, *table = policy->freq_table;
 
 	if (!per_cpu(cpufreq_show_table, cpu))
 		return -ENODEV;
 
-	table = per_cpu(cpufreq_show_table, cpu);
-
-	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
-		if (table[i].frequency == CPUFREQ_ENTRY_INVALID)
+	cpufreq_for_each_valid_entry(pos, table) {
+		/*
+		 * show_boost = true and driver_data = BOOST freq
+		 * display BOOST freqs
+		 *
+		 * show_boost = false and driver_data = BOOST freq
+		 * show_boost = true and driver_data != BOOST freq
+		 * continue - do not display anything
+		 *
+		 * show_boost = false and driver_data != BOOST freq
+		 * display NON BOOST freqs
+		 */
+		if (show_boost ^ (pos->flags & CPUFREQ_BOOST_FREQ))
 			continue;
-		count += sprintf(&buf[count], "%d ", table[i].frequency);
+
+		count += sprintf(&buf[count], "%d ", pos->frequency);
 	}
 	count += sprintf(&buf[count], "\n");
 
