@@ -44,6 +44,7 @@
 
 ### Others
 
+- **Merge `linux-3.10.102` from `linux-stable` (latest version of `linux-3.10.y`)**
 - *Fast Charge (up to 2000mAh!)*
 - *Include Kernel-Adiutor Mod*
 
