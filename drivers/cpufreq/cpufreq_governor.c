@@ -38,6 +38,7 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 	struct zz_dbs_tuners *ex_tuners = dbs_data->tuners;	
 	struct zz_dbs_tuners *zz_tuners = dbs_data->tuners;
 	struct ac_dbs_tuners *ac_tuners = dbs_data->tuners;
+	struct dk_dbs_tuners *dk_tuners = dbs_data->tuners;
 	struct cpufreq_policy *policy;
 	unsigned int sampling_rate;
 	unsigned int max_load = 0;
@@ -67,10 +68,14 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 	} else if (dbs_data->cdata->governor == GOV_ALUCARD) {
 		sampling_rate = ac_tuners->sampling_rate;
 		ignore_nice = ac_tuners->ignore_nice_load;
- 	} else {
- 		sampling_rate = cs_tuners->sampling_rate;
- 		ignore_nice = cs_tuners->ignore_nice_load;
- 	}
+	} else if (dbs_data->cdata->governor == GOV_DARKNESS) {
+		sampling_rate = dk_tuners->sampling_rate;
+		ignore_nice = dk_tuners->ignore_nice_load;
+	} else {
+		sampling_rate = cs_tuners->sampling_rate;
+		ignore_nice = cs_tuners->ignore_nice_load;
+	}
+
 	policy = cdbs->cur_policy;
 
 	/* Get Absolute Load */
@@ -211,6 +216,10 @@ static void set_sampling_rate(struct dbs_data *dbs_data,
 		struct ac_dbs_tuners *ac_tuners = dbs_data->tuners;
 		ac_tuners->sampling_rate = max(ac_tuners->sampling_rate, 
 			sampling_rate);
+	} else if (dbs_data->cdata->governor == GOV_DARKNESS) {
+		struct dk_dbs_tuners *dk_tuners = dbs_data->tuners;
+		dk_tuners->sampling_rate = max(dk_tuners->sampling_rate, 
+			sampling_rate);
 	} else {
 		struct od_dbs_tuners *od_tuners = dbs_data->tuners;
 		od_tuners->sampling_rate = sampling_rate;
@@ -223,13 +232,16 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 	struct dbs_data *dbs_data;
 	struct od_cpu_dbs_info_s *od_dbs_info = NULL;
 	struct cs_cpu_dbs_info_s *cs_dbs_info = NULL;
+	struct dk_cpu_dbs_info_s *dk_dbs_info = NULL;
 	struct ex_cpu_dbs_info_s *ex_dbs_info = NULL;
 	struct zz_cpu_dbs_info_s *zz_dbs_info = NULL;
 	struct ac_cpu_dbs_info_s *ac_dbs_info = NULL;
 	struct od_ops *od_ops = NULL;
 	struct ac_ops *ac_ops = NULL;
+	struct dk_ops *dk_ops = NULL;
 	struct od_dbs_tuners *od_tuners = NULL;
 	struct cs_dbs_tuners *cs_tuners = NULL;
+	struct dk_dbs_tuners *dk_tuners = NULL;
 	struct ex_dbs_tuners *ex_tuners = NULL;
 	struct zz_dbs_tuners *zz_tuners = NULL;
 	struct ac_dbs_tuners *ac_tuners = NULL;
@@ -382,7 +394,12 @@ if ((dbs_data->cdata->governor == GOV_ZZMOOVE) &&
 		sampling_rate = ac_tuners->sampling_rate;
 		ignore_nice = ac_tuners->ignore_nice_load;
 		ac_ops = dbs_data->cdata->gov_ops;
-	
+	} else if (dbs_data->cdata->governor == GOV_DARKNESS) {
+		dk_tuners = dbs_data->tuners;
+		dk_dbs_info = dbs_data->cdata->get_cpu_dbs_info_s(cpu);
+		sampling_rate = dk_tuners->sampling_rate;
+		ignore_nice = dk_tuners->ignore_nice_load;
+		dk_ops = dbs_data->cdata->gov_ops;
 	} else {
 		od_tuners = dbs_data->tuners;
 		od_dbs_info = dbs_data->cdata->get_cpu_dbs_info_s(cpu);
@@ -432,6 +449,8 @@ if ((dbs_data->cdata->governor == GOV_ZZMOOVE) &&
 			ac_ops->get_cpu_frequency_table_minmax(policy, cpu);
 			ac_dbs_info->up_rate = 1;
 			ac_dbs_info->down_rate = 1;
+		} else if (dbs_data->cdata->governor == GOV_DARKNESS) {
+			dk_ops->get_cpu_frequency_table(cpu);
 		} else {
 			od_dbs_info->rate_mult = 1;
 			od_dbs_info->sample_type = OD_NORMAL_SAMPLE;
