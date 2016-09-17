@@ -214,7 +214,6 @@ int cpufreq_frequency_table_get_index(struct cpufreq_policy *policy,
 EXPORT_SYMBOL_GPL(cpufreq_frequency_table_get_index);
 
 static DEFINE_PER_CPU(struct cpufreq_frequency_table *, cpufreq_show_table);
-
 /**
  * show_available_freqs - show available frequencies for the specified CPU
  */
